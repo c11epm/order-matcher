@@ -15,3 +15,5 @@ bin/
 /cbuild
 /.nb-gradle
 /.nb-gradle-properties
+out/
+src/test/lib/

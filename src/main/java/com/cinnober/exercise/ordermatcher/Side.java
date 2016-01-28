@@ -25,5 +25,9 @@ public enum Side {
     /** Buy side. Also known as bid. */
     BUY,
     /** Sell side. Also known as ask. */
-    SELL
+    SELL;
+
+    public Side otherSide() {
+        return this.equals(BUY) ? SELL : BUY;
+    }
 }

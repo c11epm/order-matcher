@@ -20,7 +20,10 @@ package com.cinnober.exercise.ordermatcher;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.util.Collections;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Order book with continuous matching of limit orders with time priority.
@@ -48,15 +51,16 @@ import java.util.List;
  * <li> On the time the order was entered (first come first served)
  * </ol>
  *
- * <p><b>Note:</b> some methods are not yet implemented. This is your job!
- * See {@link #addOrder(Order)} and {@link #getOrders(Side)}.
  */
 public class OrderMatcher {
+
+    LinkedList<Order> orders;
 
     /**
      * Create a new order matcher.
      */
     public OrderMatcher() {
+        orders = new LinkedList<>();
     }
     
     /**
@@ -66,7 +70,105 @@ public class OrderMatcher {
      * @return any trades that were created by this order, not null.
      */
     public List<Trade> addOrder(Order order) {
-        throw new UnsupportedOperationException("addOrder is not implemented yet"); // FIXME
+        List<Order> orderList;
+        //Add order to order book
+        orders.add(order);
+
+        //Collect potential matching orders
+        orderList = getFilteredOrdersList(order);
+
+        //Execute trades if it exist potential matching orders.
+        return orderList.size() < 1 ? new LinkedList<>() : getAvailableTrades(orderList, order);
+    }
+
+    /**
+     * Gets all available trades given orders matching and a specified order to match.
+     *
+     * <p> The given order is matched with the sorted list of orders and then takes the
+     * quantity of shares specified in the order until the trades is satisfied and the
+     * bids is gone for atleast "one side".
+     * @param ords the sorted orders to match the order.
+     * @param order the order to match.
+     * @return a list of executed trades.
+     */
+    private List<Trade> getAvailableTrades(List<Order> ords, Order order) {
+        LinkedList<Trade> trades = new LinkedList<>();
+        long takenQuantity = 0L;
+
+        //Take shares from orders while not enough shares is collected and there
+        //still are orders to match against.
+        while(takenQuantity < order.getQuantity() && ords.size() > 0) {
+
+
+            if(takenQuantity + ords.get(0).getQuantity() > order.getQuantity()) {
+                //If the currently first order in the list have more shares than needed.
+                long takePart = order.getQuantity() - takenQuantity;
+                Order firstOrder = ords.get(0);
+                firstOrder.takeQuantity(takePart);
+                takenQuantity += takePart;
+
+                //Add executed trade
+                trades.add(new Trade(order.getId(), firstOrder.getId(), firstOrder.getPrice(), takePart));
+
+            } else if(takenQuantity + ords.get(0).getQuantity() <= order.getQuantity()) {
+                //If the currently first order in the list have less or exactly the number
+                //of shares needed.
+
+                //Remove order taking from
+                Order firstOrder = ords.remove(0);
+                removeOrderFromOrders(firstOrder);
+
+                takenQuantity += firstOrder.getQuantity();
+                //Add executed trade
+                trades.add(new Trade(order.getId(), firstOrder.getId(), firstOrder.getPrice(), firstOrder.getQuantity()));
+            }
+        }
+        //Check if the takenQuantity is less than total needed for order
+        if(takenQuantity < order.getQuantity()) {
+            //Reduce the needed shares with the amount of collected shares through trading
+            order.takeQuantity(takenQuantity);
+        } else if(takenQuantity == order.getQuantity()) {
+            //If all shares that the order needs is collected, then remove the order.
+            removeOrderFromOrders(order);
+        }
+        //Return all executed trades.
+        return trades;
+    }
+
+    /**
+     * Removes an order from the order book.
+     * @param order the order to remove
+     */
+    private void removeOrderFromOrders(Order order) {
+        orders.remove(order);
+    }
+
+    /**
+     * Returns all orders that could possibly be matched to a given order.
+     *
+     * <p> The method searches for all orders that have the opposite side
+     * as the supplied one. Then depending on either BUY or SELL the price
+     * for the orders are then filtered, and only "fitting" orders are chosen
+     * as matching from the order book.
+     *
+     *
+     * @param order the order to find matching orders to.
+     * @return List of orders from the order book that could be matched to the given order.
+     */
+    private List<Order> getFilteredOrdersList(Order order) {
+        List<Order> matchingOrders;
+        if(order.getSide().equals(Side.BUY)) {
+            //Match the buy order with sell orders that are lower or equal in price.
+            matchingOrders = getOrders(order.getSide().otherSide()).stream().
+                    filter(o -> o.getPrice() <= order.getPrice()).
+                    collect(Collectors.toList());
+        } else {
+            //Match the sell order with buy orders that are higher or equal in price.
+            matchingOrders = getOrders(order.getSide().otherSide()).stream().
+                    filter(o -> o.getPrice() >= order.getPrice()).
+                    collect(Collectors.toList());
+        }
+        return matchingOrders;
     }
 
     /**
@@ -79,7 +181,15 @@ public class OrderMatcher {
      * @return all remaining orders in the order book, in priority order, for the specified side, not null.
      */
     public List<Order> getOrders(Side side) {
-        throw new UnsupportedOperationException("getOrders is not implemented yet"); // FIXME
+        //TODO: Fix better storing of orders, unnecessary to filter the whole list every time. But it works... :)
+        //Collect all orders for a side.
+        LinkedList<Order> matchingOrders = orders.stream().
+                filter(o -> o.getSide().equals(side)).
+                collect(Collectors.toCollection(LinkedList::new));
+
+        //Sort the collected list
+        Collections.sort(matchingOrders);
+        return matchingOrders;
     }
 
 
